@@ -51,6 +51,15 @@ This template provisions Railway-managed PostgreSQL for NocoDB's schema and user
 
 The template deploys `nocodb/nocodb:0.263.1` on port 8080. Railway connects to Postgres at `postgres.railway.internal:5432` via `${{Postgres.DATABASE_URL}}`. The NC_DB variable specifies the meta database location. Set NC_AUTH_JWT_SECRET to a strong random value for session security.
 
+## Environment Variables Reference for NocoDB on Railway
+
+| Variable | Description | Value |
+|----------|-------------|-------|
+| `NC_AUTH_JWT_SECRET` | Secret key for JWT token generation and session validation. Keep this secure. | `${{secret(32)}}` |
+| `NC_DB` | Connection string to PostgreSQL storing NocoDB metadata. | `${{Postgres.DATABASE_URL}}` |
+| `PORT` | Port the NocoDB service listens on. | `8080` |
+| `NODE_ENV` | Runtime environment mode (production/development). | `production` |
+
 ## How does NocoDB compare against other database platforms
 
 ### NocoDB vs Airtable (Airtable Alternative)
@@ -105,11 +114,11 @@ The cloud version handles backups, updates, and scaling for you, but you're lock
 
 ### Monthly cost of self hosting NocoDB on Railway
 
-A typical NocoDB deployment on Railway costs between $7 and $20 per month. This covers the NocoDB application server and managed PostgreSQL database. Usage scales with row count and concurrent users, but most small teams stay under $15 monthly. There's no per-user pricing, so adding teammates doesn't increase your bill. If you need 10GB+ of database storage, budget an additional $1-2 per GB per month.
+A typical NocoDB deployment on Railway costs $7–$20 monthly, covering the app server and managed Postgres. No per-user pricing, so team growth doesn't increase costs. Storage beyond 10GB costs $1–2 per GB per month.
 
 ### System Requirements for Hosting NocoDB on a VPS
 
-Minimum: 1 vCPU, 1 GB RAM, 10 GB SSD. NocoDB runs comfortably on modest hardware because Postgres handles the heavy lifting. Docker is required. For production with 10,000+ rows, allocate 2 vCPU, 4 GB RAM, and 50 GB SSD. Railroad's managed Postgres includes daily snapshots and automated backups, which removes the need for manual database maintenance scripts.
+Minimum: 1 vCPU, 1 GB RAM, 10 GB SSD. For 10,000+ rows, use 2 vCPU, 4 GB RAM, 50 GB SSD. Railway's managed Postgres includes daily backups, removing manual maintenance.
 
 ## Frequently Asked Questions (FAQs)
 
@@ -117,7 +126,7 @@ Minimum: 1 vCPU, 1 GB RAM, 10 GB SSD. NocoDB runs comfortably on modest hardware
 NocoDB self-hosted is the open-source database UI running on your own infrastructure. You control the Postgres database, domain, and all table data instead of relying on a SaaS provider's servers.
 
 ### How much does NocoDB self hosting cost on Railway?
-Expect $7 to $20 per month for a standard deployment with moderate data size. Railway bills by resource usage, not per user, so your cost stays predictable as your team grows. Smaller projects stay under $10 monthly.
+Expect $7–$20 monthly for standard deployments. Railway bills by usage, not per user, keeping costs predictable as your team grows.
 
 ### Is NocoDB free to use?
 Yes. The core platform is AGPL-3.0 open source and free to self-host. You only pay for the infrastructure you consume on Railway. No per-user licensing or feature tiers.
