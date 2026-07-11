@@ -69,9 +69,9 @@ The template deploys `nocodb/nocodb:0.263.1` on port 8080. Railway connects to P
 * **Performance:** NocoDB handles 100k+ rows efficiently; Baserow struggles with large datasets.
 
 ### NocoDB vs Google Sheets (Spreadsheet Alternative)
-* **Database power:** NocoDB runs structured queries; Sheets is a flat spreadsheet tool.
-* **Scale:** NocoDB handles millions of rows; Sheets crashes at 100k rows.
-* **APIs:** NocoDB auto-generates REST and GraphQL; Sheets needs scripting.
+* **Database power:** NocoDB runs queries; Sheets is flat.
+* **Scale:** NocoDB handles millions of rows; Sheets crashes at 100k.
+* **APIs:** NocoDB auto-generates REST/GraphQL; Sheets needs scripting.
 
 ## How to use NocoDB (the OSS Database UI)?
 
