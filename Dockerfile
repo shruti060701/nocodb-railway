@@ -1,0 +1,6 @@
+FROM nocodb/nocodb:0.263.1
+
+EXPOSE 8080
+
+ENV PORT=8080
+ENV NODE_ENV=production
