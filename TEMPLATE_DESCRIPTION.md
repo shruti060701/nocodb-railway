@@ -106,7 +106,7 @@ Run `docker compose up -d` to start NocoDB and Postgres together. The app will b
 
 ## Official Pricing of NocoDB (NocoDB pricing)
 
-NocoDB is released under the AGPL-3.0 open-source license. The core platform is free to self-host on your own infrastructure forever. NocoDB also offers a managed cloud tier starting free for individuals, with team and enterprise plans adding SAML, priority support, and SLA guarantees. Self-hosting on Railway means you avoid all per-user SaaS fees and keep 100% of your data.
+NocoDB is released under the AGPL-3.0 open-source license, free to self-host on your own infrastructure forever. NocoDB also offers a managed cloud tier free for individuals, with team and enterprise plans adding SAML, priority support, and SLA guarantees. Self-hosting on Railway means you avoid all per-user SaaS fees and keep full control of your data.
 
 ## NocoDB cloud vs self hosted comparison (Pricing, features, costs, and more)
 
