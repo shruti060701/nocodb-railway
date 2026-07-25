@@ -1,16 +1,14 @@
 # Railway Template Composer Checklist — NocoDB
 
-Apply these settings in the Railway template composer when generating the template from the project. Rewritten 2026-07-25 (twice, same day) — first to move from a stale, never-GitHub-connected 2-service setup to a 4-service one matching Railway's official reference template (app + worker + Redis + Postgres), then reverted back to 2 services after live-testing found a real, reproducible bug in the 4-service setup (see "Why no worker service" below).
+Apply these settings in the Railway template composer when generating the template from the project. Rewritten 2026-07-25 (three times, same day) — first to move from a stale, never-GitHub-connected 2-service setup to a 4-service one (app + worker + Redis + Postgres), based on an early WebFetch summary of `railway.com/deploy/nocodb`'s marketing page that turned out to be wrong about what the official template actually deploys. Reverted to 2 services after live-testing the 4-service version found a real, reproducible bug. Then corrected the framing below after checking the *actual* official template source and finding it never had a worker in the first place.
 
 **Real services this template deploys:** `nocodb` (the app, single instance), `Postgres`.
 
 ---
 
-## Why no separate worker service
+## Why no Redis or worker service
 
-NocoDB officially supports splitting background job processing (CSV imports, exports, automations) into a dedicated worker container via `NC_WORKER_CONTAINER=true`, and Railway's own official reference template (`railway.com/deploy/nocodb`) deploys exactly that: app + worker + Redis + Postgres.
-
-**We built that 4-service version first, then live-tested it with a real CSV import — and it failed.** Root cause, confirmed via the worker's own deploy logs, not inferred:
+**What actually happened, in order:** an early WebFetch summary of the marketing page claimed Railway's official template deploys 4 services — app, worker, Redis, Postgres — with the worker handling background jobs (`NC_WORKER_CONTAINER=true`) coordinated via Redis. We built and live-tested that exact version. It broke: Railway doesn't support mounting one Volume across two separate services, so when a CSV import job landed on the worker container, it failed trying to read a file that only existed on the app container's disk. Confirmed via the worker's own logs, not inferred:
 
 ```
 CSV import failed: Failed to stream file: ENOENT: no such file or directory,
@@ -18,11 +16,13 @@ access '/usr/app/data/nc/uploads/2026/07/25/.../nocodb-test-import_0svxH.csv'
 ---- !! JOB FAILED !! ----
 ```
 
-What happened: the app received the CSV upload and wrote it to its own local disk. The import job was then picked up by the separate worker service — a different container, with its own separate filesystem. Railway does not support mounting one Volume across two services the way Docker Compose does, so the worker has no way to see a file that only exists on the app's disk. **This isn't an edge case — it broke the exact CSV import flow shown on NocoDB's own "Getting Started" screen**, the first thing most new users try.
+**Then, when asked "are we sure we're not missing something" by comparing against the reference template again, we went and checked the actual official source this time** — `github.com/railwayapp-templates/nocodb`, the real Railway-owned repo — instead of trusting another marketing-page summary. **It contains exactly 3 files (`Dockerfile`, `LICENSE`, `README.md`), no worker Dockerfile, no `NC_WORKER_CONTAINER` anywhere.** The real Dockerfile is just `FROM nocodb/nocodb`. The real README states: *"NocoDB (one click deploy), PostgreSQL backed database, Redis backed cache"* — three services, with Redis described purely as an optional cache, not a job-coordination layer.
 
-**Fix applied: dropped the worker (and Redis, which existed only to coordinate app/worker job state) entirely.** A single NocoDB instance processes background jobs in-process, sharing its own local disk with itself — no cross-container file access needed. Re-tested the identical CSV import against this simplified setup and confirmed it now works end-to-end: real rows landed in a real table (8/8 rows from a test CSV, verified by opening the table in a browser, not just checking the job status).
+**So the "4-service, worker+Redis" premise that drove the original build was never actually true.** The official template is 3 services (app, Postgres, Redis-as-cache) — not 4, and never had a worker. This template ends up at 2 services (no Redis either), which is a deliberate simplification of the *real* 3-service official design, not a recovery from a broken 4-service one. Redis in the official template is optional — NocoDB falls back to in-memory caching without it, which is what this template does, since an in-memory cache is functionally fine for a single instance and one fewer service is one fewer thing that can break for a deployer.
 
-**If you want the worker-split architecture anyway** (e.g. for genuinely high background-job volume where in-process handling becomes a bottleneck), the real fix is configuring S3-compatible object storage for uploads instead of local disk, so both containers can read the same files over the network. That requires an external storage account (Cloudflare R2, Backblaze B2, etc.) and isn't part of this template, since it adds real setup friction that conflicts with a one-click deploy.
+**The real, reproducible Railway platform limitation found along the way (can't share one Volume across two services) is still true and still worth knowing** — it just doesn't apply to what Railway's own official template actually does, since that template was never trying to share a volume between two services in the first place.
+
+**If a genuinely high-background-job-volume use case ever needs a dedicated worker,** the real fix is S3-compatible object storage for uploads (so both containers can read the same files over the network) rather than local disk. That requires an external storage account and isn't part of this template, since it adds real setup friction that conflicts with a one-click deploy.
 
 ---
 

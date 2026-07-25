@@ -10,18 +10,18 @@ The bigger reason teams choose self-hosting isn't the money, though — it's whe
 
 NocoDB's real differentiator versus most "spreadsheet UI over a database" tools is that it isn't limited to one database engine. It connects to PostgreSQL, MySQL, SQLite, MariaDB, SQL Server, and other ODBC-compatible databases — so if your team already has data in an existing production database, NocoDB can put a collaborative UI on top of it directly, rather than requiring a migration into a new proprietary format first.
 
-## Why This Template Doesn't Use a Separate Worker Service (and most guides that do are quietly broken on Railway)
+## Why This Template Doesn't Use a Separate Worker Service (and why the split quietly breaks on Railway anyway)
 
-Most "NocoDB with a worker" setups — including Railway's own official reference template — split background job processing (CSV imports, large exports, scheduled automations) into a second container, running the identical NocoDB image with `NC_WORKER_CONTAINER=true`. On a single host running Docker Compose, this works cleanly, because both containers can mount the same shared volume.
+NocoDB supports splitting background job processing (CSV imports, large exports, scheduled automations) into a second container, running the identical image with `NC_WORKER_CONTAINER=true`, coordinated via Redis. On a single host running Docker Compose, this works cleanly, because both containers can mount the same shared volume.
 
-We built that exact 4-service version first (app, worker, Redis, Postgres) and tested it with a real CSV import before publishing anything. It failed. Railway doesn't support mounting one Volume across two services — so when the import job landed on the worker container, it had no way to see the file the app had just written to its own local disk. The worker's own logs showed the real error plainly:
+We built and live-tested that exact 4-service version (app, worker, Redis, Postgres) with a real CSV import before publishing anything. It failed. Railway doesn't support mounting one Volume across two services, so the worker had no way to see the file the app had just written to its own local disk. The worker's own logs showed the real error plainly:
 
 ```
 CSV import failed: Failed to stream file: ENOENT: no such file or directory
 ---- !! JOB FAILED !! ----
 ```
 
-This isn't a rare edge case — it broke the exact CSV import flow on NocoDB's own "Getting Started" screen, the first thing most new users try. Rather than ship a plausible-looking architecture that quietly fails on first use, this template runs NocoDB as a single instance. Background jobs process in-process against the same local disk uploads are written to, so there's no cross-container file access to break. We re-ran the identical import against this simpler setup and confirmed all rows landed correctly, verified by opening the resulting table in a browser.
+This isn't a rare edge case — it broke the exact CSV import flow on NocoDB's own "Getting Started" screen, the first thing most new users try. We then checked Railway's actual official template source directly (`github.com/railwayapp-templates/nocodb`, not just its marketing page) and found it doesn't use a worker at all — it's just the app, Postgres, and Redis as an optional cache, three services total. So this template goes a step further and runs as a single instance with no Redis either, since an in-memory cache is functionally fine without a worker to coordinate with. Background jobs process in-process against the same local disk uploads are written to, so there's no cross-container file access to break. We re-ran the identical import against this setup and confirmed all rows landed correctly, verified by opening the resulting table in a browser.
 
 ## System Requirements for Self-Hosting NocoDB
 
@@ -69,14 +69,11 @@ By deploying NocoDB self-hosted on Railway, you are one step closer to supportin
 
 ## Frequently Asked Questions
 
-### Why doesn't this template match Railway's own official NocoDB listing exactly?
-It did initially — we built the same app + worker + Redis + Postgres architecture first. Live-testing a real CSV import surfaced a genuine bug (see above), so this template simplifies to a single instance instead, trading theoretical horizontal scalability for something that actually works out of the box.
+### Does this match Railway's own official NocoDB template?
+Almost — the real official template (`railwayapp-templates/nocodb` on GitHub, verified directly rather than trusting its marketing page) is 3 services: app, Postgres, and Redis as an optional cache. No worker. This template goes one step simpler, dropping Redis too, since without a worker there's nothing for it to coordinate — NocoDB just falls back to in-memory caching, which is functionally fine for a single instance.
 
 ### Will background jobs slow down the app for other users?
 Not meaningfully for typical usage — jobs run asynchronously even on one instance. For genuinely high job volume, the correct fix is S3-compatible object storage plus a separate worker, not local-disk sharing.
-
-### What happens if Redis isn't included — does anything break?
-No. Redis in the 4-service architecture existed purely to coordinate job state between the app and worker. Without a worker, NocoDB falls back to its own in-memory caching, which is what this template uses.
 
 ### Can I connect NocoDB to a database other than Postgres for my actual tables?
 Yes — the Postgres in this template only stores NocoDB's own metadata. Your actual data tables can connect to MySQL, SQLite, MariaDB, SQL Server, or other Postgres instances entirely, configured through NocoDB's own UI after deployment.
@@ -88,4 +85,4 @@ The self-hosted core is AGPL-3.0 open source and free forever, with no row limit
 NocoDB supports direct CSV import for individual tables, covering most straightforward migrations. Complex Airtable bases with heavy linked records, lookups, or automations may need manual reconstruction after import, since those structures don't map one-to-one between platforms.
 
 ### How was this template actually verified before publishing?
-Beyond a healthy deployment status, we drove a real browser through the full flow: created an admin account, uploaded a test CSV through Import Data, and confirmed every row landed correctly in the resulting table. That real end-to-end test is what caught the worker bug described above — a passing healthcheck alone wouldn't have surfaced it, since both containers start up cleanly regardless.
+Beyond a healthy deployment status, we drove a real browser through the full flow: created an admin account, uploaded a test CSV through Import Data, and confirmed every row landed in the resulting table. That real end-to-end test is what caught the worker bug above — a passing healthcheck alone wouldn't have surfaced it.
