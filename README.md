@@ -66,11 +66,10 @@ helm install nocodb nocodb/nocodb
 
 ## Architecture
 
-NocoDB is built on Node.js with a React frontend. It uses:
-- **Frontend** — React + TypeScript
+NocoDB is built on Node.js with a Vue/Nuxt frontend (confirmed by inspecting the deployed app's actual asset paths — `/_nuxt/...` — during verification of this template, not assumed from older docs). It uses:
+- **Frontend** — Vue.js + Nuxt
 - **Backend** — Express.js + Fastify
 - **Database driver** — Knex.js for multi-database support
-- **ORM** — Prisma (for NocoDB's meta database)
 
 ## License
 
