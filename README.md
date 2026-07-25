@@ -14,22 +14,33 @@ Deploy NocoDB, the open-source alternative to Airtable, on Railway with one clic
 - **Team collaboration** — Real-time sync, comments, and role-based access control
 - **Self-hosted control** — Your data lives on your infrastructure, not a SaaS vendor's servers
 - **Airtable-compatible** — Familiar workflows for teams migrating from Airtable
+- **Background job processing** — A dedicated worker service handles imports, exports, and automations off the request path, so large jobs don't slow down the app your team is actively using
+
+## What This Template Deploys
+
+This template provisions four services together:
+
+1. **NocoDB** (`nocodb/nocodb:2026.07.0`) — the main app and web UI, public-facing
+2. **NocoDB Worker** — the same image, running in background-job mode (`NC_WORKER_CONTAINER=true`), no public port
+3. **Redis** — required for both the app and worker to share cache and job-queue state; without it, the two containers can't coordinate background jobs correctly
+4. **PostgreSQL** (Railway's managed Postgres) — stores NocoDB's metadata (table schemas, views, filters, user accounts)
 
 ## How to Use
 
 1. Click the Deploy on Railway button above
-2. Connect your GitHub account and authorize Railway
-3. Set the `NC_AUTH_JWT_SECRET` environment variable (auto-generated on deploy)
-4. Railway automatically provisions a PostgreSQL database for you
-5. Wait for the deployment to finish and open your Railway domain
-6. Create your first admin account and start building
+2. Railway automatically provisions PostgreSQL, Redis, the NocoDB app, and the NocoDB worker together
+3. `NC_AUTH_JWT_SECRET` is auto-generated on deploy — no action needed
+4. Wait for all four services to come online (the app service depends on Postgres and Redis being reachable)
+5. Open your Railway domain and create your first admin account
 
 ## Notes
 
-- **Database persistence** — NocoDB metadata is stored in the PostgreSQL service. Your data is safe across restarts
-- **Port** — NocoDB runs on port 8080 inside the container. Railway automatically exposes it via HTTPS
-- **Authentication** — Set a strong `NC_AUTH_JWT_SECRET` to secure your instance
-- **Postgres required** — This template uses PostgreSQL as the meta database. Your actual data tables can connect to other databases (MySQL, SQLite, etc.) through NocoDB's UI
+- **Database persistence** — NocoDB metadata is stored in the PostgreSQL service. Your data is safe across restarts.
+- **Port** — NocoDB runs on port 8080 inside the container. Railway automatically exposes it via HTTPS.
+- **Authentication** — `NC_AUTH_JWT_SECRET` is auto-generated per deployment to secure your instance.
+- **Postgres required** — This template uses PostgreSQL as the meta database. Your actual data tables can connect to other databases (MySQL, SQLite, etc.) through NocoDB's UI.
+- **Redis required for the worker to function** — Without `NC_REDIS_URL` set correctly on both the app and worker, background jobs (bulk imports, large exports, scheduled automations) will not process.
+- **Known limitation — local attachment storage isn't shared between the app and worker** — the official NocoDB Docker Compose setup mounts one shared volume across both containers; Railway doesn't support mounting a single volume across two separate services. This template only mounts a volume on the main `nocodb` service. For most usage (data stored in Postgres, attachments served via a table's UI) this doesn't matter — but if you're running attachment-heavy workflows that rely on the worker processing locally-uploaded files, consider configuring S3-compatible storage instead of local disk.
 
 ## Self-Hosting on Other Platforms
 
@@ -44,7 +55,7 @@ For Docker Compose:
 docker run -d --name noco -v "$(pwd)"/nocodb:/usr/app/data/ -p 8080:8080 \
   -e NC_DB="pg://host:5432?u=postgres&p=password&d=nocodb" \
   -e NC_AUTH_JWT_SECRET="your-secret-key" \
-  nocodb/nocodb:0.263.1
+  nocodb/nocodb:2026.07.0
 ```
 
 For Kubernetes:

@@ -1,4 +1,4 @@
-FROM nocodb/nocodb:0.263.1
+FROM nocodb/nocodb:2026.07.0
 
 EXPOSE 8080
 
