@@ -14,33 +14,28 @@ Deploy NocoDB, the open-source alternative to Airtable, on Railway with one clic
 - **Team collaboration** — Real-time sync, comments, and role-based access control
 - **Self-hosted control** — Your data lives on your infrastructure, not a SaaS vendor's servers
 - **Airtable-compatible** — Familiar workflows for teams migrating from Airtable
-- **Background job processing** — A dedicated worker service handles imports, exports, and automations off the request path, so large jobs don't slow down the app your team is actively using
 
 ## What This Template Deploys
 
-This template provisions four services together:
+Two services: **NocoDB** (`nocodb/nocodb:2026.07.0`) and Railway-managed **PostgreSQL** for metadata (table schemas, views, filters, user accounts). A Railway Volume is mounted on the NocoDB service for local file storage (uploads, CSV imports).
 
-1. **NocoDB** (`nocodb/nocodb:2026.07.0`) — the main app and web UI, public-facing
-2. **NocoDB Worker** — the same image, running in background-job mode (`NC_WORKER_CONTAINER=true`), no public port
-3. **Redis** — required for both the app and worker to share cache and job-queue state; without it, the two containers can't coordinate background jobs correctly
-4. **PostgreSQL** (Railway's managed Postgres) — stores NocoDB's metadata (table schemas, views, filters, user accounts)
+**Why not a separate worker service?** NocoDB officially supports splitting background job processing (CSV imports, exports, automations) into a dedicated worker container, and Railway's own reference template deploys one. We tested it during this template's build and found a real, reproducible bug: Railway doesn't support mounting one volume across two separate services, so when an import job landed on the worker container, it failed with `ENOENT: no such file or directory` trying to read a file that only existed on the app container's disk — confirmed via the worker's own logs, not a guess. Running as a single service avoids this entirely, since uploads and job processing then share the same local disk. See `TEMPLATE_COMPOSER_CHECKLIST.md` for the full reproduction if you want the details.
 
 ## How to Use
 
 1. Click the Deploy on Railway button above
-2. Railway automatically provisions PostgreSQL, Redis, the NocoDB app, and the NocoDB worker together
+2. Railway automatically provisions PostgreSQL and NocoDB together
 3. `NC_AUTH_JWT_SECRET` is auto-generated on deploy — no action needed
-4. Wait for all four services to come online (the app service depends on Postgres and Redis being reachable)
-5. Open your Railway domain and create your first admin account
+4. Wait for the deployment to finish and open your Railway domain
+5. Create your first admin account and start building
 
 ## Notes
 
 - **Database persistence** — NocoDB metadata is stored in the PostgreSQL service. Your data is safe across restarts.
+- **File persistence** — Uploads and CSV import files are stored on a Railway Volume mounted at `/usr/app/data`.
 - **Port** — NocoDB runs on port 8080 inside the container. Railway automatically exposes it via HTTPS.
 - **Authentication** — `NC_AUTH_JWT_SECRET` is auto-generated per deployment to secure your instance.
 - **Postgres required** — This template uses PostgreSQL as the meta database. Your actual data tables can connect to other databases (MySQL, SQLite, etc.) through NocoDB's UI.
-- **Redis required for the worker to function** — Without `NC_REDIS_URL` set correctly on both the app and worker, background jobs (bulk imports, large exports, scheduled automations) will not process.
-- **Known limitation — local attachment storage isn't shared between the app and worker** — the official NocoDB Docker Compose setup mounts one shared volume across both containers; Railway doesn't support mounting a single volume across two separate services. This template only mounts a volume on the main `nocodb` service. For most usage (data stored in Postgres, attachments served via a table's UI) this doesn't matter — but if you're running attachment-heavy workflows that rely on the worker processing locally-uploaded files, consider configuring S3-compatible storage instead of local disk.
 
 ## Self-Hosting on Other Platforms
 

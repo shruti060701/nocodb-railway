@@ -1,20 +1,31 @@
 # Deploy and Host NocoDB Self-Hosted on Railway
 
-NocoDB is the open-source Airtable alternative that turns your database into a smart spreadsheet. Self-host on Railway to keep your data under your control, avoid SaaS vendor lock-in, and get started in under five minutes — with a full four-service stack (app, background worker, Redis, and PostgreSQL) provisioned automatically.
+NocoDB is the open-source Airtable alternative that turns your database into a smart spreadsheet. Self-host on Railway to keep your data under your control, avoid SaaS vendor lock-in, and get started in under five minutes.
 
 ## About Hosting NocoDB Self-Hosted
 
 Airtable's pricing scales with your headcount, not your usage — a five-person team on Airtable Business pays $1,200 a year for what is, underneath the polish, a set of database tables. NocoDB gives you the same spreadsheet-over-database experience without the per-seat tax, because you're paying for the compute you actually use on Railway, not a subscription tier gated by feature flags.
 
-The bigger reason teams choose self-hosting over Airtable isn't the money, though — it's where the data lives. Client records, internal operations data, anything under an NDA or compliance requirement: with NocoDB self-hosted, that data sits in a Postgres database you control, not a third-party's multi-tenant cluster.
+The bigger reason teams choose self-hosting isn't the money, though — it's where the data lives. Client records, internal operations data, anything under an NDA or compliance requirement: with NocoDB self-hosted, that data sits in a Postgres database you control, not a third-party's multi-tenant cluster.
 
-NocoDB's real differentiator versus most "spreadsheet UI over a database" tools is that it isn't limited to one database engine. It connects to PostgreSQL, MySQL, SQLite, MariaDB, SQL Server, and other ODBC-compatible databases — so if your team already has data living in an existing production database, NocoDB can put a collaborative UI on top of it directly, rather than requiring a data migration into a new proprietary format first.
+NocoDB's real differentiator versus most "spreadsheet UI over a database" tools is that it isn't limited to one database engine. It connects to PostgreSQL, MySQL, SQLite, MariaDB, SQL Server, and other ODBC-compatible databases — so if your team already has data in an existing production database, NocoDB can put a collaborative UI on top of it directly, rather than requiring a migration into a new proprietary format first.
 
-## What This Template Actually Deploys
+## Why This Template Doesn't Use a Separate Worker Service (and most guides that do are quietly broken on Railway)
 
-Most "NocoDB on Railway" guides only cover a two-service setup: the app plus Postgres. That works for light usage, but breaks down the moment your team runs a genuinely large CSV import or export — that operation runs on the same process serving everyone's live requests, visibly slowing the app for everyone else at the same time.
+Most "NocoDB with a worker" setups — including Railway's own official reference template — split background job processing (CSV imports, large exports, scheduled automations) into a second container, running the identical NocoDB image with `NC_WORKER_CONTAINER=true`. On a single host running Docker Compose, this works cleanly, because both containers can mount the same shared volume.
 
-This template deploys the real four-service architecture NocoDB's own official Docker Compose reference uses: the main app, a dedicated **worker** (the identical image, running with `NC_WORKER_CONTAINER=true`) handling background jobs off the request path, **Redis** for job-state coordination, and managed **PostgreSQL** for metadata. Redis isn't a nice-to-have — without it, the worker has no way to know what jobs are pending.
+We built that exact 4-service version first (app, worker, Redis, Postgres) and tested it with a real CSV import before publishing anything. It failed. Railway doesn't support mounting one Volume across two services — so when the import job landed on the worker container, it had no way to see the file the app had just written to its own local disk. The worker's own logs showed the real error plainly:
+
+```
+CSV import failed: Failed to stream file: ENOENT: no such file or directory
+---- !! JOB FAILED !! ----
+```
+
+This isn't a rare edge case — it broke the exact CSV import flow on NocoDB's own "Getting Started" screen, the first thing most new users try. Rather than ship a plausible-looking architecture that quietly fails on first use, this template runs NocoDB as a single instance. Background jobs process in-process against the same local disk uploads are written to, so there's no cross-container file access to break. We re-ran the identical import against this simpler setup and confirmed all rows landed correctly, verified by opening the resulting table in a browser.
+
+## System Requirements for Self-Hosting NocoDB
+
+NocoDB is comfortable on modest hardware for most teams. A minimum viable setup is 1 shared vCPU, 1 GB RAM, and 10 GB of storage — enough for a small team's internal tools and a few thousand rows across tables. If you're managing 10,000+ rows, running frequent large CSV imports, or supporting a larger team hitting the app concurrently, bump up to 2 vCPU and 4 GB RAM. Storage needs scale mostly with attachments (images, files) rather than raw table data, since Postgres handles structured data efficiently regardless of row count.
 
 ## Common Use Cases
 
@@ -23,17 +34,16 @@ This template deploys the real four-service architecture NocoDB's own official D
 - **Feedback and bug tracking** — Collaborative tables for feature requests and issue triage, visible to your whole team at once.
 - **Content and editorial pipelines** — Organize drafts, media, and publishing status with automated status transitions.
 - **Generated APIs for other tools** — Every table gets REST and GraphQL endpoints automatically, useful for wiring NocoDB into Zapier, n8n, or a custom app without writing backend code.
-- **Bulk data operations** — Large imports and exports route through the dedicated worker, so they don't degrade the experience for everyone else in the app at the same time.
 
 ## Dependencies for NocoDB Self-Hosted Hosting
 
 ### Deployment Dependencies
 
-NocoDB needs PostgreSQL for its metadata (table schemas, views, filters, user accounts) and Redis for caching plus background-job coordination between the app and worker services. This template provisions both as managed Railway services, connected entirely over Railway's private network.
+NocoDB needs PostgreSQL for its metadata (table schemas, views, filters, user accounts). This template provisions it as a managed Railway service, connected entirely over Railway's private network, plus a Railway Volume for local file storage.
 
 ### Implementation Details
 
-The template deploys `nocodb/nocodb:2026.07.0` — a specific, verified release tag, not a floating `:latest` — on port 8080 for the app, with the identical image in worker mode for the second service. `NC_DB` uses NocoDB's own connection-string format (`pg://host:port?u=user&p=password&d=database`), genuinely different from a standard Postgres URL — using the wrong format is a common way self-hosted NocoDB setups quietly fail to start. `NC_REDIS_URL` links both services to the same Redis instance, and `NC_AUTH_JWT_SECRET` is auto-generated once and shared identically between them.
+The template deploys `nocodb/nocodb:2026.07.0` — a specific, verified release tag, not a floating `:latest` — on port 8080. `NC_DB` uses NocoDB's own connection-string format (`pg://host:port?u=user&p=password&d=database`), genuinely different from a standard Postgres URL — using the wrong format is a common way self-hosted NocoDB setups quietly fail to start. `NC_AUTH_JWT_SECRET` is auto-generated per deployment for session security.
 
 ## How NocoDB compares to the alternatives
 
@@ -45,13 +55,11 @@ The template deploys `nocodb/nocodb:2026.07.0` — a specific, verified release 
 
 ## Getting Started
 
-After deploying, wait for all four services to come online — the app depends on Postgres and Redis being reachable first, so give it a minute past the point where Postgres itself shows healthy. Open your Railway domain, and NocoDB walks you through creating the first admin account right there in the browser; there's no pre-seeded default login to change here, unlike some other self-hosted tools.
+After deploying, open your Railway domain, and NocoDB walks you through creating the first admin account right there in the browser — there's no pre-seeded default login to change here, unlike some other self-hosted tools.
 
 From there, click "Add Table" and either import an existing CSV or start from a blank spreadsheet. Column types, relations between tables, and views (grid, gallery, kanban, calendar) are all configured through the UI. If you're migrating from Airtable specifically, NocoDB's CSV import handles most of the transition directly — you generally don't need an intermediate export/reformat step.
 
 Once your first table exists, check the API tab: NocoDB auto-generates a full REST API and a GraphQL schema for every table you create, with API tokens scoped per base. This is what makes NocoDB genuinely useful as a lightweight backend, not just a spreadsheet replacement — you can point Zapier, n8n, or a custom script at those generated endpoints without writing any server code yourself.
-
-One thing worth knowing upfront: this template's worker and app services don't share local disk storage (a real Railway limitation — you can't mount one volume across two separate services the way single-host Docker Compose can). For most usage this is invisible, since your table data lives in Postgres either way. It only matters for attachment-heavy workflows where the worker needs a file the app just saved locally — configuring S3-compatible object storage instead of local disk sidesteps it entirely.
 
 ## Why Deploy NocoDB Self-Hosted on Railway?
 
@@ -61,14 +69,14 @@ By deploying NocoDB self-hosted on Railway, you are one step closer to supportin
 
 ## Frequently Asked Questions
 
-### Why does this template need a separate worker and Redis, if other NocoDB guides don't use them?
-Many simpler guides deploy just the app plus Postgres, which works fine for light usage. But without a worker, background jobs (bulk imports, large exports, scheduled automations) run on the same process handling everyone's live requests — a big job can visibly slow the app down while it runs. This template matches NocoDB's own official reference architecture instead, which keeps those jobs off the request path entirely.
+### Why doesn't this template match Railway's own official NocoDB listing exactly?
+It did initially — we built the same app + worker + Redis + Postgres architecture first. Live-testing a real CSV import surfaced a genuine bug (see above), so this template simplifies to a single instance instead, trading theoretical horizontal scalability for something that actually works out of the box.
 
-### Do I need to configure the worker myself?
-No — it's provisioned and wired to the app and Redis automatically. The only thing that makes it a worker instead of a second copy of the app is `NC_WORKER_CONTAINER=true`, already set.
+### Will background jobs slow down the app for other users?
+Not meaningfully for typical usage — jobs run asynchronously even on one instance. For genuinely high job volume, the correct fix is S3-compatible object storage plus a separate worker, not local-disk sharing.
 
-### What happens if Redis goes down?
-Unlike some optional-Redis setups, NocoDB's worker genuinely depends on Redis to receive job assignments. If Redis is unreachable, background jobs will stop processing until it recovers — though the core app (browsing tables, editing records) keeps working normally, since that doesn't route through the worker.
+### What happens if Redis isn't included — does anything break?
+No. Redis in the 4-service architecture existed purely to coordinate job state between the app and worker. Without a worker, NocoDB falls back to its own in-memory caching, which is what this template uses.
 
 ### Can I connect NocoDB to a database other than Postgres for my actual tables?
 Yes — the Postgres in this template only stores NocoDB's own metadata. Your actual data tables can connect to MySQL, SQLite, MariaDB, SQL Server, or other Postgres instances entirely, configured through NocoDB's own UI after deployment.
@@ -76,8 +84,8 @@ Yes — the Postgres in this template only stores NocoDB's own metadata. Your ac
 ### Is NocoDB really free, or is there a catch at scale?
 The self-hosted core is AGPL-3.0 open source and free forever, with no row limits, user limits, or feature gates. NocoDB's business model is a separate managed cloud offering and enterprise support contracts — self-hosting on Railway means you never touch that tier unless you choose to.
 
-### How is this different from just running NocoDB's Docker Compose file myself on a VPS?
-Functionally, very similar — this template mirrors NocoDB's own official four-service reference architecture. The difference is operational: Railway handles TLS certificates, private networking between services, managed Postgres backups, and horizontal scaling without you managing a VPS, Docker daemon, or reverse proxy configuration by hand.
-
 ### Will my existing Airtable data transfer over?
 NocoDB supports direct CSV import for individual tables, covering most straightforward migrations. Complex Airtable bases with heavy linked records, lookups, or automations may need manual reconstruction after import, since those structures don't map one-to-one between platforms.
+
+### How was this template actually verified before publishing?
+Beyond a healthy deployment status, we drove a real browser through the full flow: created an admin account, uploaded a test CSV through Import Data, and confirmed every row landed correctly in the resulting table. That real end-to-end test is what caught the worker bug described above — a passing healthcheck alone wouldn't have surfaced it, since both containers start up cleanly regardless.
